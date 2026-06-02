@@ -1,31 +1,19 @@
 ###############################################################
 # ALB Controller Module
-# Installs AWS Load Balancer Controller via Helm
-# Creates ACM certificate and Route53 hosted zone configuration
+# Resources:
+#   - Route53 hosted zone (optional) + ACM certificate (DNS validated)
+#   - AWS Load Balancer Controller  (Helm)
+#   - Metrics Server                (Helm)
+#   - Cluster Autoscaler            (Helm)
 ###############################################################
 
-terraform {
-  required_providers {
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.12"
-    }
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
 data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
 
-# ─── Route53 Hosted Zone ─────────────────────────────────────
+# ─── Route53 ─────────────────────────────────────────────────
 resource "aws_route53_zone" "main" {
   count = var.create_hosted_zone ? 1 : 0
   name  = var.domain_name
-
-  tags = var.tags
+  tags  = var.tags
 }
 
 data "aws_route53_zone" "existing" {
@@ -70,16 +58,27 @@ resource "aws_route53_record" "cert_validation" {
 
 resource "aws_acm_certificate_validation" "main" {
   certificate_arn         = aws_acm_certificate.main.arn
-  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+  validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
+
+  timeouts {
+    create = "10m"
+  }
 }
 
-# ─── AWS Load Balancer Controller (Helm) ─────────────────────
+# ─── AWS Load Balancer Controller ────────────────────────────
 resource "helm_release" "alb_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  version    = var.alb_controller_chart_version
-  namespace  = "kube-system"
+  name             = "aws-load-balancer-controller"
+  repository       = "https://aws.github.io/eks-charts"
+  chart            = "aws-load-balancer-controller"
+  version          = var.alb_controller_chart_version
+  namespace        = "kube-system"
+  create_namespace = false
+  atomic           = true
+  cleanup_on_fail  = true
+  timeout          = 300
+
+  # values file loaded first; set{} blocks override individual keys
+  values = [file("${path.module}/../../helm/alb-controller/values.yaml")]
 
   set {
     name  = "clusterName"
@@ -96,6 +95,7 @@ resource "helm_release" "alb_controller" {
     value = "aws-load-balancer-controller"
   }
 
+  # IRSA annotation — double-escape the dot inside the annotation key
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = var.alb_controller_role_arn
@@ -115,94 +115,81 @@ resource "helm_release" "alb_controller" {
     name  = "replicaCount"
     value = "2"
   }
-
-  set {
-    name  = "resources.requests.cpu"
-    value = "100m"
-  }
-
-  set {
-    name  = "resources.requests.memory"
-    value = "128Mi"
-  }
-
-  set {
-    name  = "resources.limits.cpu"
-    value = "500m"
-  }
-
-  set {
-    name  = "resources.limits.memory"
-    value = "512Mi"
-  }
-
-  values = [file("${path.module}/../../helm/alb-controller/values.yaml")]
 }
 
-# ─── Metrics Server (Helm) ───────────────────────────────────
+# ─── Metrics Server ──────────────────────────────────────────
 resource "helm_release" "metrics_server" {
-  name       = "metrics-server"
-  repository = "https://kubernetes-sigs.github.io/metrics-server/"
-  chart      = "metrics-server"
-  version    = var.metrics_server_chart_version
-  namespace  = "kube-system"
+  name             = "metrics-server"
+  repository       = "https://kubernetes-sigs.github.io/metrics-server/"
+  chart            = "metrics-server"
+  version          = var.metrics_server_chart_version
+  namespace        = "kube-system"
+  create_namespace = false
+  atomic           = true
+  cleanup_on_fail  = true
+  timeout          = 300
 
-  set {
-    name  = "args[0]"
-    value = "--kubelet-insecure-tls"
-  }
-
-  set {
-    name  = "replicas"
-    value = "2"
-  }
+  # Pass args as a YAML values block — avoids set{} index notation issues
+  values = [
+    yamlencode({
+      args = [
+        "--kubelet-insecure-tls",
+        "--kubelet-preferred-address-types=InternalIP"
+      ]
+      replicas = "2"
+      resources = {
+        requests = { cpu = "50m", memory = "64Mi" }
+        limits   = { cpu = "250m", memory = "256Mi" }
+      }
+    })
+  ]
 }
 
-# ─── Cluster Autoscaler (Helm) ────────────────────────────────
+# ─── Cluster Autoscaler ──────────────────────────────────────
 resource "helm_release" "cluster_autoscaler" {
-  name       = "cluster-autoscaler"
-  repository = "https://kubernetes.github.io/autoscaler"
-  chart      = "cluster-autoscaler"
-  version    = var.cluster_autoscaler_chart_version
-  namespace  = "kube-system"
+  name             = "cluster-autoscaler"
+  repository       = "https://kubernetes.github.io/autoscaler"
+  chart            = "cluster-autoscaler"
+  version          = var.cluster_autoscaler_chart_version
+  namespace        = "kube-system"
+  create_namespace = false
+  atomic           = true
+  cleanup_on_fail  = true
+  timeout          = 300
 
-  set {
-    name  = "autoDiscovery.clusterName"
-    value = var.cluster_name
-  }
-
-  set {
-    name  = "awsRegion"
-    value = data.aws_region.current.name
-  }
-
-  set {
-    name  = "rbac.serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "rbac.serviceAccount.name"
-    value = "cluster-autoscaler"
-  }
-
-  set {
-    name  = "rbac.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = var.cluster_autoscaler_role_arn
-  }
-
-  set {
-    name  = "extraArgs.scale-down-delay-after-add"
-    value = "5m"
-  }
-
-  set {
-    name  = "extraArgs.scale-down-unneeded-time"
-    value = "5m"
-  }
-
-  set {
-    name  = "replicaCount"
-    value = "2"
-  }
+  # Pass all complex keys via yamlencode values block
+  # avoids Helm set{} dot-notation issues with hyphenated extraArgs keys
+  values = [
+    yamlencode({
+      autoDiscovery = {
+        clusterName = var.cluster_name
+      }
+      awsRegion    = data.aws_region.current.name
+      replicaCount = "2"
+      rbac = {
+        serviceAccount = {
+          create = true
+          name   = "cluster-autoscaler"
+          annotations = {
+            "eks.amazonaws.com/role-arn" = var.cluster_autoscaler_role_arn
+          }
+        }
+      }
+      extraArgs = {
+        "balance-similar-node-groups"       = "true"
+        "skip-nodes-with-system-pods"       = "false"
+        "scale-down-delay-after-add"        = "5m"
+        "scale-down-unneeded-time"          = "5m"
+        "scale-down-utilization-threshold"  = "0.5"
+        "expander"                          = "least-waste"
+      }
+      resources = {
+        requests = { cpu = "100m", memory = "128Mi" }
+        limits   = { cpu = "500m", memory = "512Mi" }
+      }
+      podAnnotations = {
+        "cluster-autoscaler.kubernetes.io/safe-to-evict" = "false"
+      }
+    })
+  ]
 }
