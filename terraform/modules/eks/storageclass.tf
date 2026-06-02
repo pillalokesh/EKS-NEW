@@ -1,15 +1,8 @@
 ###############################################################
-# StorageClass Module
-# Creates gp3 StorageClass as the cluster default
-# Required for: Prometheus, Grafana, and any PVC-based workload
+# StorageClass
+# Creates gp3 as the cluster default StorageClass.
+# Required for: Prometheus, Grafana, and any PVC workload.
 ###############################################################
-
-terraform {
-  required_providers {
-    kubernetes = { source = "hashicorp/kubernetes", version = "~> 2.25" }
-  }
-}
-
 # Patch the existing gp2 default off so gp3 becomes the default
 resource "kubernetes_annotations" "gp2_non_default" {
   api_version = "storage.k8s.io/v1"

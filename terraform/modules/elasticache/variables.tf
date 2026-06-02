@@ -1,3 +1,8 @@
+variable "kms_key_arn" {
+  description = "KMS key ARN for CloudWatch log group encryption"
+  type        = string
+}
+
 variable "cluster_name" {
   type = string
 }

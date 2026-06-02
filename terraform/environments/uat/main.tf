@@ -1,6 +1,5 @@
 ###############################################################
-# dev environment - root module
-# Identical structure to prod but with smaller instance types
+# uat environment - root module
 ###############################################################
 
 terraform {
@@ -106,7 +105,7 @@ module "ecr" {
   repository_names = var.ecr_repositories
   kms_key_arn      = module.kms.s3_kms_key_arn
   node_role_arn    = module.eks.node_role_arn
-  force_delete     = true
+  force_delete     = false
   tags             = local.common_tags
 }
 
@@ -114,21 +113,21 @@ module "s3" {
   source        = "../../modules/s3"
   cluster_name  = var.cluster_name
   kms_key_arn   = module.kms.s3_kms_key_arn
-  force_destroy = true
+  force_destroy = false
   tags          = local.common_tags
 }
 
 module "rds" {
-  source             = "../../modules/rds"
-  cluster_name       = var.cluster_name
-  private_subnet_ids = module.networking.private_subnet_ids
-  rds_sg_id          = module.networking.rds_sg_id
-  kms_key_arn        = module.kms.rds_kms_key_arn
-  instance_class     = var.rds_instance_class
-  master_username    = var.rds_master_username
-  master_password    = var.rds_master_password
-  deletion_protection = false
-  tags               = local.common_tags
+  source              = "../../modules/rds"
+  cluster_name        = var.cluster_name
+  private_subnet_ids  = module.networking.private_subnet_ids
+  rds_sg_id           = module.networking.rds_sg_id
+  kms_key_arn         = module.kms.rds_kms_key_arn
+  instance_class      = var.rds_instance_class
+  master_username     = var.rds_master_username
+  master_password     = var.rds_master_password
+  deletion_protection = true
+  tags                = local.common_tags
 }
 
 module "elasticache" {
@@ -136,6 +135,7 @@ module "elasticache" {
   cluster_name       = var.cluster_name
   private_subnet_ids = module.networking.private_subnet_ids
   elasticache_sg_id  = module.networking.elasticache_sg_id
+  kms_key_arn        = module.kms.secrets_kms_key_arn
   node_type          = var.redis_node_type
   num_cache_clusters = var.redis_num_cache_clusters
   tags               = local.common_tags
@@ -165,6 +165,7 @@ module "secrets" {
 module "waf" {
   source       = "../../modules/waf"
   cluster_name = var.cluster_name
+  kms_key_arn  = module.kms.secrets_kms_key_arn
   tags         = local.common_tags
 }
 

@@ -74,11 +74,13 @@ resource "aws_elasticache_replication_group" "main" {
 resource "aws_cloudwatch_log_group" "redis_slow" {
   name              = "/aws/elasticache/${var.cluster_name}/slow-logs"
   retention_in_days = 30
+  kms_key_id        = var.kms_key_arn
   tags              = var.tags
 }
 
 resource "aws_cloudwatch_log_group" "redis_engine" {
   name              = "/aws/elasticache/${var.cluster_name}/engine-logs"
   retention_in_days = 30
+  kms_key_id        = var.kms_key_arn
   tags              = var.tags
 }

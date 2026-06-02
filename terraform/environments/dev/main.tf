@@ -136,6 +136,7 @@ module "elasticache" {
   cluster_name       = var.cluster_name
   private_subnet_ids = module.networking.private_subnet_ids
   elasticache_sg_id  = module.networking.elasticache_sg_id
+  kms_key_arn        = module.kms.secrets_kms_key_arn
   node_type          = var.redis_node_type
   num_cache_clusters = var.redis_num_cache_clusters
   tags               = local.common_tags
@@ -165,6 +166,7 @@ module "secrets" {
 module "waf" {
   source       = "../../modules/waf"
   cluster_name = var.cluster_name
+  kms_key_arn  = module.kms.secrets_kms_key_arn
   tags         = local.common_tags
 }
 
