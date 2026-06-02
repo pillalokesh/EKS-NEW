@@ -1,0 +1,60 @@
+# Terraform state files — never commit
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform plan output — may contain secrets
+*.tfplan
+tfplan
+
+# Terraform working directories
+**/.terraform/
+**/.terraform.lock.hcl
+
+# Terraform crash log
+crash.log
+crash.*.log
+
+# Variable files that may contain secrets
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# SSH keys
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+
+# AWS credentials — never commit
+.aws/
+credentials
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Helm chart dependencies
+charts/
+
+# Kubernetes kubeconfig
+kubeconfig
+kubeconfig-*
+*.kubeconfig
+
+# Logs
+*.log
+
+# OS files
+.DS_Store

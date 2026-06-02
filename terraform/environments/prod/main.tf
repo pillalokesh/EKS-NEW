@@ -103,6 +103,9 @@ module "eks" {
   cluster_sg_id      = module.networking.eks_cluster_sg_id
   nodes_sg_id        = module.networking.eks_nodes_sg_id
   kms_key_arn        = module.kms.eks_kms_key_arn
+  cluster_endpoint_public_access_cidrs = var.cluster_endpoint_public_access_cidrs
+  github_actions_role_arn = module.iam.github_actions_role_arn
+  admin_iam_role_arns     = var.admin_iam_role_arns
 
   system_node_instance_types = var.system_node_instance_types
   system_node_desired        = var.system_node_desired

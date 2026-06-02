@@ -6,7 +6,7 @@ variable "aws_region" {
 
 variable "environment" {
   type    = string
-  default = "prod"
+  default = "qa"
 }
 
 variable "project_name" {
@@ -25,17 +25,17 @@ variable "owner" {
 # ─── Networking ──────────────────────────────────────────────
 variable "vpc_cidr" {
   type    = string
-  default = "10.0.0.0/16"
+  default = "10.2.0.0/16"
 }
 
 variable "public_subnet_cidrs" {
   type    = list(string)
-  default = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  default = ["10.2.1.0/24", "10.2.2.0/24", "10.2.3.0/24"]
 }
 
 variable "private_subnet_cidrs" {
   type    = list(string)
-  default = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
+  default = ["10.2.11.0/24", "10.2.12.0/24", "10.2.13.0/24"]
 }
 
 # ─── EKS ─────────────────────────────────────────────────────
@@ -44,28 +44,34 @@ variable "eks_cluster_version" {
   default = "1.29"
 }
 
+variable "cluster_endpoint_public_access_cidrs" {
+  description = "Restrict EKS public API endpoint to these CIDRs."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "system_node_instance_types" {
   type    = list(string)
-  default = ["m5.large"]
+  default = ["t3.medium"]
 }
 
 variable "system_node_desired" { type = number; default = 2 }
-variable "system_node_min"     { type = number; default = 2 }
-variable "system_node_max"     { type = number; default = 4 }
+variable "system_node_min"     { type = number; default = 1 }
+variable "system_node_max"     { type = number; default = 3 }
 
 variable "app_node_instance_types" {
   type    = list(string)
-  default = ["m5.xlarge"]
+  default = ["t3.large"]
 }
 
 variable "app_node_capacity_type" {
   type    = string
-  default = "ON_DEMAND"
+  default = "SPOT"
 }
 
-variable "app_node_desired" { type = number; default = 3 }
-variable "app_node_min"     { type = number; default = 3 }
-variable "app_node_max"     { type = number; default = 20 }
+variable "app_node_desired" { type = number; default = 2 }
+variable "app_node_min"     { type = number; default = 1 }
+variable "app_node_max"     { type = number; default = 8 }
 
 # ─── ECR ─────────────────────────────────────────────────────
 variable "ecr_repositories" {
@@ -76,7 +82,7 @@ variable "ecr_repositories" {
 # ─── RDS ─────────────────────────────────────────────────────
 variable "rds_instance_class" {
   type    = string
-  default = "db.r6g.large"
+  default = "db.t3.medium"
 }
 
 variable "rds_master_username" {
@@ -92,12 +98,12 @@ variable "rds_master_password" {
 # ─── Redis ───────────────────────────────────────────────────
 variable "redis_node_type" {
   type    = string
-  default = "cache.r6g.large"
+  default = "cache.t3.small"
 }
 
 variable "redis_num_cache_clusters" {
   type    = number
-  default = 3
+  default = 2
 }
 
 # ─── Domain / ACM ────────────────────────────────────────────
@@ -113,7 +119,7 @@ variable "create_hosted_zone" {
 # ─── WAF ─────────────────────────────────────────────────────
 variable "waf_rate_limit" {
   type    = number
-  default = 2000
+  default = 3000
 }
 
 # ─── Monitoring ──────────────────────────────────────────────
@@ -124,18 +130,18 @@ variable "grafana_admin_password" {
 
 variable "prometheus_retention" {
   type    = string
-  default = "30d"
+  default = "7d"
 }
 
 variable "prometheus_storage_size" {
   type    = string
-  default = "100Gi"
+  default = "30Gi"
 }
 
 # ─── Logging ─────────────────────────────────────────────────
 variable "log_retention_days" {
   type    = number
-  default = 90
+  default = 14
 }
 
 # ─── GitHub Actions ──────────────────────────────────────────

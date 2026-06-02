@@ -1,21 +1,12 @@
 ###############################################################
-# Monitoring Module
-# Installs: Prometheus Stack (Prometheus, Grafana,
-#           kube-state-metrics, node-exporter) via Helm
+# Monitoring Module — kube-prometheus-stack (Prometheus + Grafana)
 ###############################################################
-
-terraform {
-  required_providers {
-    helm       = { source = "hashicorp/helm", version = "~> 2.12" }
-    kubernetes = { source = "hashicorp/kubernetes", version = "~> 2.25" }
-  }
-}
 
 resource "kubernetes_namespace" "monitoring" {
   metadata {
     name = "monitoring"
     labels = {
-      name                    = "monitoring"
+      name                           = "monitoring"
       "app.kubernetes.io/managed-by" = "terraform"
     }
   }

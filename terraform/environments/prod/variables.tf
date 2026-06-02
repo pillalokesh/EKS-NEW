@@ -44,6 +44,12 @@ variable "eks_cluster_version" {
   default = "1.29"
 }
 
+variable "cluster_endpoint_public_access_cidrs" {
+  description = "Restrict EKS public API endpoint to these CIDRs. Set to your VPN/office egress IPs in prod."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "system_node_instance_types" {
   type    = list(string)
   default = ["m5.large"]

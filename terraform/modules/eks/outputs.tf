@@ -33,3 +33,11 @@ output "cluster_autoscaler_role_arn" {
 output "node_role_arn" {
   value = aws_iam_role.nodes.arn
 }
+
+output "cluster_version" {
+  value = aws_eks_cluster.main.version
+}
+
+output "cluster_arn" {
+  value = aws_eks_cluster.main.arn
+}

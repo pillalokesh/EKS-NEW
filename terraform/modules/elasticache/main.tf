@@ -1,14 +1,16 @@
 ###############################################################
-# ElastiCache Module
-# Creates: Redis replication group (cluster mode) in private
-#          subnets with automatic failover
+# ElastiCache Module — Redis HA replication group
 ###############################################################
+
+locals {
+  # replication_group_id max = 40 chars
+  redis_id = substr("${var.cluster_name}-redis", 0, 40)
+}
 
 resource "aws_elasticache_subnet_group" "main" {
   name       = "${var.cluster_name}-redis-subnet-group"
   subnet_ids = var.private_subnet_ids
-
-  tags = merge(var.tags, { Name = "${var.cluster_name}-redis-subnet-group" })
+  tags       = merge(var.tags, { Name = "${var.cluster_name}-redis-subnet-group" })
 }
 
 resource "aws_elasticache_parameter_group" "redis" {
@@ -29,7 +31,7 @@ resource "aws_elasticache_parameter_group" "redis" {
 }
 
 resource "aws_elasticache_replication_group" "main" {
-  replication_group_id = "${var.cluster_name}-redis"
+  replication_group_id = local.redis_id
   description          = "Redis cluster for ${var.cluster_name}"
 
   engine               = "redis"
@@ -38,8 +40,8 @@ resource "aws_elasticache_replication_group" "main" {
   num_cache_clusters   = var.num_cache_clusters
   port                 = 6379
 
-  subnet_group_name  = aws_elasticache_subnet_group.main.name
-  security_group_ids = [var.elasticache_sg_id]
+  subnet_group_name    = aws_elasticache_subnet_group.main.name
+  security_group_ids   = [var.elasticache_sg_id]
   parameter_group_name = aws_elasticache_parameter_group.redis.name
 
   automatic_failover_enabled = true
@@ -50,7 +52,6 @@ resource "aws_elasticache_replication_group" "main" {
   snapshot_retention_limit = 7
   snapshot_window          = "03:00-04:00"
   maintenance_window       = "sun:04:00-sun:05:00"
-
   auto_minor_version_upgrade = true
   apply_immediately          = false
 

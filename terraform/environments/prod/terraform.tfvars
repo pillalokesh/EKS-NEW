@@ -17,6 +17,7 @@ eks_cluster_version = "1.29"
 
 # Restrict EKS public API endpoint to your corporate/VPN egress IPs in production
 # cluster_endpoint_public_access_cidrs = ["YOUR_VPN_CIDR/32"]
+cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
 
 system_node_instance_types = ["m5.large"]
 system_node_desired        = 2

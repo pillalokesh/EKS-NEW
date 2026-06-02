@@ -10,7 +10,8 @@ vpc_cidr             = "10.3.0.0/16"
 public_subnet_cidrs  = ["10.3.1.0/24", "10.3.2.0/24", "10.3.3.0/24"]
 private_subnet_cidrs = ["10.3.11.0/24", "10.3.12.0/24", "10.3.13.0/24"]
 
-eks_cluster_version = "1.29"
+eks_cluster_version                  = "1.29"
+cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
 
 system_node_instance_types = ["m5.large"]
 system_node_desired        = 2

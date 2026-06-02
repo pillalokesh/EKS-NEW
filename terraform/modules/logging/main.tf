@@ -1,16 +1,6 @@
 ###############################################################
-# Logging Module
-# Installs: Fluent Bit via Helm
-# Creates:  CloudWatch Log Groups
+# Logging Module — Fluent Bit + CloudWatch Log Groups
 ###############################################################
-
-terraform {
-  required_providers {
-    helm       = { source = "hashicorp/helm", version = "~> 2.12" }
-    kubernetes = { source = "hashicorp/kubernetes", version = "~> 2.25" }
-    aws        = { source = "hashicorp/aws", version = "~> 5.0" }
-  }
-}
 
 data "aws_region" "current" {}
 
@@ -18,13 +8,12 @@ resource "kubernetes_namespace" "logging" {
   metadata {
     name = "logging"
     labels = {
-      name = "logging"
+      name                           = "logging"
       "app.kubernetes.io/managed-by" = "terraform"
     }
   }
 }
 
-# ─── CloudWatch Log Groups ────────────────────────────────────
 resource "aws_cloudwatch_log_group" "application" {
   name              = "/eks/${var.cluster_name}/application"
   retention_in_days = var.log_retention_days
@@ -46,7 +35,6 @@ resource "aws_cloudwatch_log_group" "dataplane" {
   tags              = var.tags
 }
 
-# ─── Fluent Bit ───────────────────────────────────────────────
 resource "helm_release" "fluent_bit" {
   name       = "fluent-bit"
   repository = "https://fluent.github.io/helm-charts"

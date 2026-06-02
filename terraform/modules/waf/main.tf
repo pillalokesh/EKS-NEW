@@ -1,6 +1,5 @@
 ###############################################################
-# WAF Module
-# Creates WAFv2 Web ACL with managed rule groups
+# WAF Module — WAFv2 Web ACL with managed rule groups
 ###############################################################
 
 resource "aws_wafv2_web_acl" "main" {
@@ -8,45 +7,35 @@ resource "aws_wafv2_web_acl" "main" {
   description = "WAF Web ACL for ${var.cluster_name} ALB"
   scope       = "REGIONAL"
 
-  default_action {
-    allow {}
-  }
+  default_action { allow {} }
 
-  # AWS Managed Rules - Common Rule Set
   rule {
     name     = "AWSManagedRulesCommonRuleSet"
     priority = 1
-
     override_action { none {} }
-
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "${var.cluster_name}-AWSManagedRulesCommonRuleSet"
+      metric_name                = "${var.cluster_name}-CommonRuleSet"
       sampled_requests_enabled   = true
     }
   }
 
-  # AWS Managed Rules - Known Bad Inputs
   rule {
     name     = "AWSManagedRulesKnownBadInputsRuleSet"
     priority = 2
-
     override_action { none {} }
-
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesKnownBadInputsRuleSet"
         vendor_name = "AWS"
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.cluster_name}-KnownBadInputs"
@@ -54,20 +43,16 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # AWS Managed Rules - SQL Injection
   rule {
     name     = "AWSManagedRulesSQLiRuleSet"
     priority = 3
-
     override_action { none {} }
-
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesSQLiRuleSet"
         vendor_name = "AWS"
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.cluster_name}-SQLiRuleSet"
@@ -75,20 +60,16 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # Rate limiting rule
   rule {
     name     = "RateLimitRule"
     priority = 4
-
     action { block {} }
-
     statement {
       rate_based_statement {
         limit              = var.rate_limit
         aggregate_key_type = "IP"
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.cluster_name}-RateLimit"
@@ -105,8 +86,9 @@ resource "aws_wafv2_web_acl" "main" {
   tags = var.tags
 }
 
+# AWS WAF requires the log group name to start with "aws-waf-logs-"
 resource "aws_cloudwatch_log_group" "waf" {
-  name              = "/aws/wafv2/${var.cluster_name}"
+  name              = "aws-waf-logs-${var.cluster_name}"
   retention_in_days = 30
   kms_key_id        = var.kms_key_arn
   tags              = var.tags

@@ -1,15 +1,6 @@
 ###############################################################
-# Velero Module
-# Installs: Velero via Helm with S3 backend + IRSA
+# Velero Module — Installs Velero via Helm with S3 backend + IRSA
 ###############################################################
-
-terraform {
-  required_providers {
-    helm       = { source = "hashicorp/helm", version = "~> 2.12" }
-    kubernetes = { source = "hashicorp/kubernetes", version = "~> 2.25" }
-    aws        = { source = "hashicorp/aws", version = "~> 5.0" }
-  }
-}
 
 data "aws_region" "current" {}
 
@@ -17,7 +8,7 @@ resource "kubernetes_namespace" "velero" {
   metadata {
     name = "velero"
     labels = {
-      name = "velero"
+      name                           = "velero"
       "app.kubernetes.io/managed-by" = "terraform"
     }
   }
@@ -31,9 +22,9 @@ resource "helm_release" "velero" {
   namespace  = kubernetes_namespace.velero.metadata[0].name
 
   values = [templatefile("${path.module}/../../helm/velero/values.yaml", {
-    bucket     = var.velero_bucket_name
-    region     = data.aws_region.current.name
-    role_arn   = var.velero_role_arn
+    bucket   = var.velero_bucket_name
+    region   = data.aws_region.current.name
+    role_arn = var.velero_role_arn
   })]
 
   set {
