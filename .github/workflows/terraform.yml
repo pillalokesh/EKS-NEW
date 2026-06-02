@@ -1,0 +1,127 @@
+name: Terraform Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+  pull_request:
+    paths:
+      - 'terraform/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [dev, qa, uat, prod]
+      action:
+        description: 'Terraform action'
+        required: true
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: 1.7.0
+  AWS_REGION: us-east-1
+
+jobs:
+  terraform:
+    name: Terraform ${{ inputs.action || 'plan' }} - ${{ inputs.environment || 'dev' }}
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ inputs.environment || 'dev' }}
+
+    environment: ${{ inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          role-session-name: Terraform-${{ inputs.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        if: inputs.action != 'destroy'
+        run: |
+          terraform plan \
+            -var-file="terraform.tfvars" \
+            -var="rds_master_username=${{ secrets.RDS_MASTER_USERNAME }}" \
+            -var="rds_master_password=${{ secrets.RDS_MASTER_PASSWORD }}" \
+            -var="grafana_admin_password=${{ secrets.GRAFANA_ADMIN_PASSWORD }}" \
+            -out=tfplan \
+            -no-color 2>&1 | tee plan_output.txt
+        continue-on-error: true
+
+      - name: Post Plan to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.existsSync('terraform/environments/${{ inputs.environment || 'dev' }}/plan_output.txt')
+              ? fs.readFileSync('terraform/environments/${{ inputs.environment || 'dev' }}/plan_output.txt', 'utf8')
+              : 'No plan output found';
+            const truncated = planOutput.length > 60000 ? planOutput.substring(0, 60000) + '\n... (truncated)' : planOutput;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan - ${{ inputs.environment || 'dev' }}\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+
+      - name: Terraform Apply
+        if: |
+          inputs.action == 'apply' &&
+          (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+        run: |
+          terraform apply \
+            -var-file="terraform.tfvars" \
+            -var="rds_master_username=${{ secrets.RDS_MASTER_USERNAME }}" \
+            -var="rds_master_password=${{ secrets.RDS_MASTER_PASSWORD }}" \
+            -var="grafana_admin_password=${{ secrets.GRAFANA_ADMIN_PASSWORD }}" \
+            -auto-approve \
+            -no-color
+
+      - name: Terraform Destroy
+        if: inputs.action == 'destroy' && inputs.environment != 'prod'
+        run: |
+          terraform destroy \
+            -var-file="terraform.tfvars" \
+            -var="rds_master_username=${{ secrets.RDS_MASTER_USERNAME }}" \
+            -var="rds_master_password=${{ secrets.RDS_MASTER_PASSWORD }}" \
+            -var="grafana_admin_password=${{ secrets.GRAFANA_ADMIN_PASSWORD }}" \
+            -auto-approve \
+            -no-color

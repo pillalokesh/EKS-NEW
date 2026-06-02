@@ -1,0 +1,28 @@
+name: CI Pipeline (Build → Scan → Push → Deploy Dev)
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  build-push:
+    uses: ./.github/workflows/build-push-ecr.yml
+    secrets: inherit
+
+  deploy-dev:
+    needs: build-push
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy-eks.yml
+    with:
+      environment: dev
+      service: all
+      image_tag: ${{ github.ref_name }}-${{ github.sha }}
+    secrets: inherit

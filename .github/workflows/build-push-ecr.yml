@@ -1,0 +1,132 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'release/**'
+    paths:
+      - 'services/**'
+      - 'frontend/**'
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to build (frontend|user-service|product-service|order-service|payment-service|all)'
+        required: true
+        default: 'all'
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  PROJECT_NAME: eks-platform
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.set-services.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: set-services
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ inputs.service }}" != "all" ]; then
+            echo "services=[\"${{ inputs.service }}\"]" >> $GITHUB_OUTPUT
+          else
+            SERVICES=()
+            git diff --name-only HEAD~1 HEAD | grep -E '^(services|frontend)/' | \
+              sed 's|/.*||' | sort -u | while read dir; do
+              [ "$dir" = "frontend" ] && SERVICES+=("frontend")
+              [ "$dir" = "services" ] && {
+                git diff --name-only HEAD~1 HEAD | grep "^services/" | \
+                  cut -d/ -f2 | sort -u | while read svc; do SERVICES+=("$svc"); done
+              }
+            done
+            SERVICES_JSON=$(printf '%s\n' "${SERVICES[@]}" | jq -R . | jq -sc .)
+            [ "$SERVICES_JSON" = "[]" ] && SERVICES_JSON='["frontend","user-service","product-service","order-service","payment-service"]'
+            echo "services=$SERVICES_JSON" >> $GITHUB_OUTPUT
+          fi
+
+  build-push:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    if: needs.detect-changes.outputs.services != '[]'
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          role-session-name: GitHubActions-${{ matrix.service }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          BRANCH=$(echo "${{ github.ref_name }}" | sed 's|/|-|g')
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "image_tag=${BRANCH}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "ecr_repo=${{ env.ECR_REGISTRY }}/${{ env.PROJECT_NAME }}/${{ matrix.service }}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.service == 'frontend' && 'frontend/Dockerfile' || format('services/{0}/Dockerfile', matrix.service) }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.ecr_repo }}:${{ steps.meta.outputs.image_tag }}
+            ${{ steps.meta.outputs.ecr_repo }}:${{ steps.meta.outputs.branch }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=${{ steps.meta.outputs.image_tag }}
+            BUILD_SHA=${{ github.sha }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.ecr_repo }}:${{ steps.meta.outputs.image_tag }}
+          format: sarif
+          output: trivy-results-${{ matrix.service }}.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results-${{ matrix.service }}.sarif
+
+      - name: Output image details
+        run: |
+          echo "### ECR Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | ${{ matrix.service }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | ${{ steps.meta.outputs.image_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Repository | ${{ steps.meta.outputs.ecr_repo }} |" >> $GITHUB_STEP_SUMMARY

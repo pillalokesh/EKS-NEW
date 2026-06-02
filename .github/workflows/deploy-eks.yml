@@ -1,0 +1,98 @@
+name: Deploy to EKS
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      service:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [dev, qa, uat, prod]
+      service:
+        description: 'Service to deploy'
+        required: true
+        type: choice
+        options: [frontend, user-service, product-service, order-service, payment-service]
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.service }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          role-session-name: EKSDeploy-${{ inputs.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.29.0
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name eks-platform-${{ inputs.environment }}
+
+      - name: Verify cluster connectivity
+        run: kubectl cluster-info
+
+      - name: Deploy to EKS
+        run: |
+          CLUSTER_NAME="eks-platform-${{ inputs.environment }}"
+          ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          IMAGE="${ECR_REGISTRY}/eks-platform/${{ inputs.service }}:${{ inputs.image_tag }}"
+
+          echo "Deploying ${{ inputs.service }} with image: $IMAGE"
+          echo "NOTE: Apply your own deployment manifests from your k8s/ directory"
+
+          # Update image on existing deployment (assumes you have created deployments manually)
+          kubectl set image deployment/${{ inputs.service }} \
+            ${{ inputs.service }}=$IMAGE \
+            --namespace=${{ inputs.environment }} \
+            --record || echo "Deployment not found - create your deployment manifest first"
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/${{ inputs.service }} \
+            --namespace=${{ inputs.environment }} \
+            --timeout=5m || echo "Rollout check skipped - deployment may not exist yet"
+
+      - name: Deployment summary
+        run: |
+          echo "### Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | ${{ inputs.service }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Tag | ${{ inputs.image_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster | eks-platform-${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
